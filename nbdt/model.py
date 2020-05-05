@@ -34,6 +34,17 @@ model_urls = {
 # RULES #
 #########
 
+def retprob(names, tree, wnid_to_outputs, wnid_to_node, wnid, sample_id):
+    node = wnid_to_node.get(wnid, None)
+    if node is not None:
+        outputs = wnid_to_outputs[node.wnid]
+        index_child = outputs['preds'][sample_id]
+        for i in range(2):
+            prob_child = float(outputs['probs'][sample_id][i])
+            name_child = wnid_to_name(node.children[i])
+            tree.append(prob_child)
+            names.append(name_child)
+            retprob(names, tree, wnid_to_outputs, wnid_to_node, node.children[i], sample_id)
 
 class EmbeddedDecisionRules(nn.Module):
 
@@ -139,9 +150,25 @@ class HardEmbeddedDecisionRules(EmbeddedDecisionRules):
 
         decisions = []
         preds = []
+
+        names = [] 
+        tree = []   
+        # retprob(names, tree, wnid_to_outputs, wnid_to_node, wnid_root)
+
+        path_names = []
+        path_inds = []
+
         for index in range(n_samples):
             decision = [{'node': node_root, 'name': 'root', 'prob': 1}]
             wnid, node = wnid_root, node_root
+            tr = []
+            nm = []
+            retprob(nm, tr, wnid_to_outputs,wnid_to_node, wnid, index )
+            names.append(nm)
+            # print('---')
+            # print(tr)
+            # print('---')
+            tree.append(tr)
             while node is not None:
                 if node.wnid not in wnid_to_outputs:
                     wnid = node = None
@@ -152,11 +179,24 @@ class HardEmbeddedDecisionRules(EmbeddedDecisionRules):
                 wnid = node.children[index_child]
                 node = wnid_to_node.get(wnid, None)
                 decision.append({'node': node, 'name': wnid_to_name(wnid), 'prob': prob_child})
+                path_names.append(wnid_to_name(wnid))
             cls = wnid_to_class.get(wnid, None)
             pred = -1 if cls is None else classes.index(cls)
             preds.append(pred)
             decisions.append(decision)
-        return torch.Tensor(preds).long(), decisions
+
+            pth = []
+            for element in path_names:
+                pth.append(nm.index(element))
+            
+            path_inds.append(pth)
+
+
+        # print("Tree: ",tree)
+        # print("Names: ",names)
+        # print("Path Indices: ",path_inds)
+
+        return torch.Tensor(preds).long(), decisions, tree, names, path_inds
 
     def predicted_to_logits(self, predicted):
         """Convert predicted classes to one-hot logits."""
@@ -166,14 +206,15 @@ class HardEmbeddedDecisionRules(EmbeddedDecisionRules):
 
     def forward_with_decisions(self, outputs):
         wnid_to_outputs = self.forward_nodes(outputs)
-        predicted, decisions = self.traverse_tree(
+        # print(wnid_to_outputs)
+        predicted, decisions, tree, names, path= self.traverse_tree(
             wnid_to_outputs, self.nodes, self.wnid_to_class, self.classes)
         logits = self.predicted_to_logits(predicted)
         logits._nbdt_output_flag = True  # checked in nbdt losses, to prevent mistakes
-        return logits, decisions
+        return logits, decisions, tree, names, path
 
     def forward(self, outputs):
-        outputs, _ = self.forward_with_decisions(outputs)
+        outputs, _,_, _, _ = self.forward_with_decisions(outputs)
         return outputs
 
 
@@ -202,6 +243,8 @@ class SoftEmbeddedDecisionRules(EmbeddedDecisionRules):
 
         for node in nodes:
             outputs = wnid_to_outputs[node.wnid]
+            # print(node)
+            # print(outputs)
 
             old_indices, new_indices = [], []
             for index_child in range(len(node.children)):
@@ -223,6 +266,11 @@ class SoftEmbeddedDecisionRules(EmbeddedDecisionRules):
         decisions = []
         node = self.nodes[0]
         leaf_to_path_nodes = Node.get_leaf_to_path(self.nodes)
+        # print('Leaf to path nodes')
+        # print(leaf_to_path_nodes)
+        # print()
+        # print('-----')
+        # print()
         for index, prediction in enumerate(predicted):
             leaf = node.wnids[prediction]
             decision = leaf_to_path_nodes[leaf]
@@ -321,8 +369,8 @@ class NBDT(nn.Module):
 
     def forward_with_decisions(self, x):
         x = self.model(x)
-        x, decisions = self.rules.forward_with_decisions(x)
-        return x, decisions
+        x, decisions, tree, names, path = self.rules.forward_with_decisions(x)
+        return x, decisions, tree, names, path
 
 
 class HardNBDT(NBDT):

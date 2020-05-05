@@ -5,6 +5,8 @@ from torchvision import transforms
 # from torch.data.utils import Dataloader
 from nbdt.utils import DATASET_TO_CLASSES, load_image_from_path, maybe_install_wordnet
 from RISE.explanations import RISE
+import torch
+import numpy as np
 
 class Explainer(RISE):
     def forward(self, x):
@@ -13,31 +15,38 @@ class Explainer(RISE):
             _, _, H, W = x.size()
             stack = torch.mul(self.masks, x.data)
             
-            P = []
+            
+            P = None
             for i in range(0, N, self.gpu_batch):
                 inp_batch = stack[i:min(i + self.gpu_batch, N)]
-                outputs = self.model.rules.forward_nodes(inp_batch)
-                for o in ouputs:
-                    P.append(o['probs'][0])
-                    P.append(o['probs'][1])
+                # print(inp_batch.size())
+                _, _, tree, _, _ = self.model.forward_with_decisions(inp_batch)
+                if P is None:
+                    P = np.array(tree)
+                else:
+                    P = np.vstack((P, np.array(tree)))
 
-            sal = torch.matmul(P.transpose(0, 1), self.masks.view(N, H*W))
-            del p
+            P = torch.from_numpy(P)
+            sal = torch.matmul(P.transpose(0, 1).float().cuda(), self.masks.view(N, H*W))
+            n = P.size(1)
+            del P
             del stack
-            sal.view((len(P), H, W))
+            sal = sal.view(n, H, W)
             sal = sal / N / self.p1
 
-            return sal
+            return sal.cpu().numpy()
 
-    def gen_final_sal(sal, path):
-        final_sal = np.zeros(sal.shape[1], sal.shape[2])
+    def gen_final_sal(self,sal, path):
+        final_sal = np.zeros((sal.shape[1], sal.shape[2]))
         weight = 1
-        for i in path:
+        for i in path[0]:
+            # print(i)
+            # print(sal[i].shape)
             final_sal += weight*sal[i]
             weight += 0.2
         
 
-        return final_sal/weight
+        return final_sal/len(path[0])
 
     
 
