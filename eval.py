@@ -63,8 +63,8 @@ model = HardNBDT(
   model=model)
 model = model.cuda()
 
-explainer = Explainer(model, (32, 32), 1000)
-explainer.generate_masks(500, 8, 0.1, 'temp.npy')
+explainer = Explainer(model, (32, 32), 500)
+explainer.generate_masks(1000, 8, 0.1, 'temp.npy')
 
 klen = 11
 ksig = 5
@@ -75,13 +75,31 @@ blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2)
 insertion = CausalMetric(model, 'ins', 32*8, substrate_fn=blur, n_classes=10, device=torch.device("cuda"))
 deletion = CausalMetric(model, 'del', 32*8, substrate_fn=torch.zeros_like, n_classes=10, device=torch.device("cuda"))
 
-for i, data in enumerate(testloader):
-    image, label = data
+mean_ins = 0
+mean_del = 0
 
-    # print(model.forward_with_decisions(image.cuda()))
-    _, _, _,_, path = model.forward_with_decisions(image.cuda())
+softmax = nn.Softmax(dim=1)
+for i, data in enumerate(testloader):
+    if i >=50:
+        break
+    image, label = data
+    logits, decisions, tree, names, path = model.forward_with_decisions(image.cuda())
+    probs = softmax(logits)
+    cl = torch.argmax(probs, 1).cpu().numpy()[0]
+
     sal = explainer(image.cuda())
-    # print(sal.shape)
+
+    print('Generating saliency maps for the decisions made: ')
+    plt.figure(figsize=(10, 5))
+    for i in range(len(path[0])):
+        plt.subplot(int('22'+ str(i+1)))
+        plt.title(names[0][path[0][i]] + ' {:.3f}'.format(tree[0][path[0][i]]))
+        plt.imshow(sal[path[0][i]], alpha=0.5, cmap='jet')
+        plt.axis('off')
+
+    plt.show()
+
+    print('Generating final combined saliency map')
     final_sal = explainer.gen_final_sal(sal, path)
     img = image.clone()
     img = img.cpu().numpy()[0]
@@ -98,14 +116,24 @@ for i, data in enumerate(testloader):
     plt.figure(figsize=(10, 5))
     plt.subplot(121)
     plt.imshow(img.astype(np.uint8))
+    plt.title(classes_cifar10[cl] + ' {:.3f}'.format(probs[0, cl]))
     plt.axis('off')
     plt.subplot(122)
     plt.imshow(final_sal, alpha=0.5, cmap='jet')
     plt.axis('off')
-    plt.show()
+    plt.savefig('/home/siddhant/figs/' + str(i) + 'sal.png')
 
-    scores2 = deletion.single_run(image, final_sal, verbose=1)
-    scores1 = insertion.single_run(image, final_sal, verbose=1)
+    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='/home/siddhant/figs/del/')
+    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='/home/siddhant/figs/ins/')
+
+    mean_ins += auc(scores1)
+    mean_del += auc(scores2)
+    print('Insertion score so far: ', mean_ins/(i + 1))
+    print('Deletion score so far: ', mean_del/(i +1))
+
+
+print('Insertion score: ', mean_ins/len(testloader))
+print('Deletion score: ', mean_del/len(testloader))
 
     # print(final_sal)
     break
