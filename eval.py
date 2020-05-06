@@ -96,7 +96,7 @@ for i, data in enumerate(testloader):
         plt.title(names[0][path[0][j]] + ' {:.3f}'.format(tree[0][path[0][j]]), color='w')
         plt.imshow(sal[path[0][j]], alpha=0.5, cmap='jet')
         plt.axis('off')
-    plt.savefig('fig{}.jpg'.format(i), facecolor = 'black')
+    plt.savefig('fig-all-cifar10-{}.jpg'.format(i), facecolor = 'black')
     plt.show()
 
     print('Generating final combined saliency map')
@@ -121,10 +121,10 @@ for i, data in enumerate(testloader):
     plt.subplot(122)
     plt.imshow(final_sal, alpha=0.5, cmap='jet')
     plt.axis('off')
-    plt.savefig('./figs/' + str(i) + 'sal.png', facecolor = 'black')
+    plt.savefig('./figs/' + str(i) + 'sal-weighted-cifar-10.png', facecolor = 'black')
 
-    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./figs/del/')
-    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./figs/ins/')
+    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./del/')
+    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./ins/')
 
     mean_ins += auc(scores1)
     mean_del += auc(scores2)
@@ -136,7 +136,7 @@ print('Insertion score: ', mean_ins/len(testloader))
 print('Deletion score: ', mean_del/len(testloader))
 
     # print(final_sal)
-    break
+    # break
 
 
 

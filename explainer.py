@@ -43,7 +43,7 @@ class Explainer(RISE):
             # print(i)
             # print(sal[i].shape)
             final_sal += weight*sal[i]
-            weight += 0.2
+            weight += 0
         
 
         return final_sal/len(path[0])
