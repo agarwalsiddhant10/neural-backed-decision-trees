@@ -15,6 +15,7 @@ import numpy as np
 from explainer import Explainer
 from RISE.evaluation import CausalMetric, auc, gkern
 import torch.nn as nn
+import os
 
 classes_cifar10 = ('plane', 'car', 'bird', 'cat',
            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -42,7 +43,7 @@ transform = transforms.Compose([
 ])
 
 batch_size = 1
-range_sample = range(0,10)
+range_sample = range(100,200,10)
 
 #Load training data
 trainset = torchvision.datasets.CIFAR10(root='./data/', train=True,
@@ -55,15 +56,23 @@ testset = torchvision.datasets.CIFAR10(root='./data/', train=False,
 testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                          shuffle=False, num_workers=1, pin_memory=True, sampler=RangeSampler(range_sample))
 
-model = wrn28_10_cifar10()
-model = HardNBDT(
+hardModel = wrn28_10_cifar10()
+hardModel = HardNBDT(
   pretrained=True,
   dataset='CIFAR10',
   arch='wrn28_10_cifar10',
-  model=model)
-model = model.cuda()
+  model=hardModel)
+hardModel = hardModel.cuda()
 
-explainer = Explainer(model, (32, 32), 500)
+softModel = wrn28_10_cifar10()
+softModel = SoftNBDT(
+  pretrained=True,
+  dataset='CIFAR10',
+  arch='wrn28_10_cifar10',
+  model=softModel)
+softModel = softModel.cuda()
+
+explainer = Explainer(hardModel, (32, 32), 500)
 explainer.generate_masks(1000, 8, 0.1, 'temp.npy')
 
 klen = 11
@@ -72,8 +81,8 @@ kern = gkern(klen, ksig)
 
 blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2)
 
-insertion = CausalMetric(model, 'ins', 32*8, substrate_fn=blur, n_classes=10, device=torch.device("cuda"))
-deletion = CausalMetric(model, 'del', 32*8, substrate_fn=torch.zeros_like, n_classes=10, device=torch.device("cuda"))
+insertion = CausalMetric(softModel, 'ins', 32*8, substrate_fn=blur, n_classes=10, device=torch.device("cuda"))
+deletion = CausalMetric(softModel, 'del', 32*8, substrate_fn=torch.zeros_like, n_classes=10, device=torch.device("cuda"))
 
 mean_ins = 0
 mean_del = 0
@@ -123,8 +132,13 @@ for i, data in enumerate(testloader):
     plt.axis('off')
     plt.savefig('./figs/' + str(i) + 'sal-weighted-cifar-10.png', facecolor = 'black')
 
-    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./del/')
-    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./ins/')
+    if not os.path.exists('insCIF{}'.format(i)):
+        os.makedirs('insCIF{}'.format(i))
+    if not os.path.exists('delCIF{}'.format(i)):
+        os.makedirs('delCIF{}'.format(i))
+
+    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./delCIF{}/'.format(i))
+    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./insCIF{}/'.format(i))
 
     mean_ins += auc(scores1)
     mean_del += auc(scores2)

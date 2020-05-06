@@ -17,6 +17,7 @@ from explainer import Explainer
 from RISE.evaluation import CausalMetric, auc, gkern
 # from RISE.utils import *
 import torch.nn as nn
+import os
 
 classes_cifar10 = ('plane', 'car', 'bird', 'cat',
            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -26,7 +27,7 @@ def get_class_name(c):
 
 def get_class_name(c):
     # path.join(path.dirname(__file__), '..')
-    labels = np.loadtxt('./tiny_synset.txt', str, delimiter='\t')
+    labels = np.loadtxt('./tiny_synset_sorted.txt', str, delimiter='\t')
     return ' '.join(labels[c].split(',')[0].split()[1:])
 
 class Dummy():
@@ -52,13 +53,13 @@ preprocess = transforms.Compose([
             ])
 
 batch_size = 1
-range_sample = range(0,10)
+range_sample = range(200,300,10)
 
 args = Dummy()
 
 args.workers = 8
 args.datadir = './tiny-imagenet-200/val/'
-args.range = range(95, 105)
+args.range = range(200, 300, 10)
 args.input_size = (64, 64)
 args.gpu_batch = 100
 
@@ -71,15 +72,24 @@ data_loader = torch.utils.data.DataLoader(
 
 #Load training data
 
-model = ResNet18(num_classes=200)
-model = HardNBDT(
+hardModel = ResNet18(num_classes=200)
+hardModel = HardNBDT(
   pretrained=True,
   dataset='TinyImagenet200',
   arch='ResNet18',
-  model=model)
-model = model.cuda()
+  model=hardModel)
+hardModel = hardModel.cuda()
 
-explainer = Explainer(model, (64, 64), 500)
+softModel = ResNet18(num_classes=200)
+softModel = SoftNBDT(
+  pretrained=True,
+  dataset='TinyImagenet200',
+  arch='ResNet18',
+  model=softModel)
+softModel = softModel.cuda()
+
+
+explainer = Explainer(hardModel, (64, 64), 500)
 explainer.generate_masks(1000, 8, 0.1, 'temp.npy')
 
 klen = 11
@@ -88,8 +98,8 @@ kern = gkern(klen, ksig)
 
 blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2)
 
-insertion = CausalMetric(model, 'ins', 64*8, substrate_fn=blur, n_classes=200, device=torch.device("cuda"))
-deletion = CausalMetric(model, 'del', 64*8, substrate_fn=torch.zeros_like, n_classes=200, device=torch.device("cuda"))
+insertion = CausalMetric(softModel, 'ins', 64*8, substrate_fn=blur, n_classes=200, device=torch.device("cuda"))
+deletion = CausalMetric(softModel, 'del', 64*8, substrate_fn=torch.zeros_like, n_classes=200, device=torch.device("cuda"))
 
 mean_ins = 0
 mean_del = 0
@@ -99,7 +109,7 @@ for i, data in enumerate(data_loader):
     if i >=50:
         break
     image, label = data
-    logits, decisions, tree, names, path = model.forward_with_decisions(image.cuda())
+    logits, decisions, tree, names, path = hardModel.forward_with_decisions(image.cuda())
     probs = softmax(logits)
     cl = torch.argmax(probs, 1).cpu().numpy()[0]
 
@@ -107,7 +117,9 @@ for i, data in enumerate(data_loader):
 
     print('Generating saliency maps for the decisions made: ')
     plt.figure(figsize=(10, 5))
-    # print(len(path[0]))
+    print(len(path[0]))
+    if(len(path[0])>10):
+        continue
     for j in range(len(path[0])):
         plt.subplot(int('42'+ str(j+1)))
         if names[0][path[0][j]] == '(generated)':
@@ -116,7 +128,7 @@ for i, data in enumerate(data_loader):
             plt.title('decision: {}  '.format(j+1) + names[0][path[0][j]] + ' with prob {:.3f}'.format(tree[0][path[0][j]]), color='w')
         plt.imshow(sal[path[0][j]], alpha=0.5, cmap='jet')
         plt.axis('off')
-    plt.savefig('fig{}.jpg'.format(i), facecolor='black')
+    plt.savefig('TinyImageNet200_all_fig{}.jpg'.format(i), facecolor='black')
     plt.show()
 
     print('Generating final combined saliency map')
@@ -141,10 +153,19 @@ for i, data in enumerate(data_loader):
     plt.subplot(122)
     plt.imshow(final_sal, alpha=0.5, cmap='jet')
     plt.axis('off')
-    plt.savefig('./figs/' + str(i) + 'sal.png', facecolor='black')
+    plt.savefig('./figs/' + str(i) + 'TinyImageNet200_mean_sal.png', facecolor='black')
 
-    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./del/')
-    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./ins/')
+
+    if not os.path.exists('insTIN{}'.format(i)):
+        os.makedirs('insTIN{}'.format(i))
+    if not os.path.exists('delTINTIN{}'.format(i)):
+        os.makedirs('delTIN{}'.format(i))
+
+    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./delTIN{}/'.format(i))
+    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./insTIN{}/'.format(i))
+
+    
+    
 
     mean_ins += auc(scores1)
     mean_del += auc(scores2)
