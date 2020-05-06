@@ -110,7 +110,10 @@ for i, data in enumerate(data_loader):
     # print(len(path[0]))
     for j in range(len(path[0])):
         plt.subplot(int('42'+ str(j+1)))
-        plt.title(names[0][path[0][j]] + ' {:.3f}'.format(tree[0][path[0][j]]), color='w')
+        if names[0][path[0][j]] == '(generated)':
+            plt.title('decision: {} with prob {:.3f}'.format(tree[0][path[0][j]], j+1), color='w')
+        else:
+            plt.title('decision: {}  '.format(j+1) + names[0][path[0][j]] + ' with prob {:.3f}'.format(tree[0][path[0][j]]), color='w')
         plt.imshow(sal[path[0][j]], alpha=0.5, cmap='jet')
         plt.axis('off')
     plt.savefig('fig{}.jpg'.format(i), facecolor='black')

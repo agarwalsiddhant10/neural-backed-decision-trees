@@ -34,7 +34,7 @@ model_urls = {
 # RULES #
 #########
 
-def retprob(names, tree, wnid_to_outputs, wnid_to_node, wnid, sample_id):
+def retprob(names, tree, tree_wnids, wnid_to_outputs, wnid_to_node, wnid, sample_id):
     node = wnid_to_node.get(wnid, None)
     if node is not None:
         outputs = wnid_to_outputs[node.wnid]
@@ -44,7 +44,8 @@ def retprob(names, tree, wnid_to_outputs, wnid_to_node, wnid, sample_id):
             name_child = wnid_to_name(node.children[i])
             tree.append(prob_child)
             names.append(name_child)
-            retprob(names, tree, wnid_to_outputs, wnid_to_node, node.children[i], sample_id)
+            tree_wnids.append(node.children[i])
+            retprob(names, tree, tree_wnids, wnid_to_outputs, wnid_to_node, node.children[i], sample_id)
 
 class EmbeddedDecisionRules(nn.Module):
 
@@ -155,7 +156,7 @@ class HardEmbeddedDecisionRules(EmbeddedDecisionRules):
         tree = []   
         # retprob(names, tree, wnid_to_outputs, wnid_to_node, wnid_root)
 
-        path_names = []
+        
         path_inds = []
 
         for index in range(n_samples):
@@ -163,7 +164,9 @@ class HardEmbeddedDecisionRules(EmbeddedDecisionRules):
             wnid, node = wnid_root, node_root
             tr = []
             nm = []
-            retprob(nm, tr, wnid_to_outputs,wnid_to_node, wnid, index )
+            tr_wn = []
+            path_wnids = []
+            retprob(nm, tr, tr_wn, wnid_to_outputs,wnid_to_node, wnid, index )
             names.append(nm)
             # print('---')
             # print(tr)
@@ -179,15 +182,15 @@ class HardEmbeddedDecisionRules(EmbeddedDecisionRules):
                 wnid = node.children[index_child]
                 node = wnid_to_node.get(wnid, None)
                 decision.append({'node': node, 'name': wnid_to_name(wnid), 'prob': prob_child})
-                path_names.append(wnid_to_name(wnid))
+                path_wnids.append(wnid)
             cls = wnid_to_class.get(wnid, None)
             pred = -1 if cls is None else classes.index(cls)
             preds.append(pred)
             decisions.append(decision)
 
             pth = []
-            for element in path_names:
-                pth.append(nm.index(element))
+            for element in path_wnids:
+                pth.append(tr_wn.index(element))
             
             path_inds.append(pth)
 
