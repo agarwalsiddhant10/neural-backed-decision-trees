@@ -59,7 +59,7 @@ args = Dummy()
 args.workers = 8
 args.datadir = './tiny-imagenet-200/val/'
 args.range = range(95, 105)
-args.input_size = (224, 224)
+args.input_size = (64, 64)
 args.gpu_batch = 100
 
 dataset = datasets.ImageFolder(args.datadir, preprocess)
@@ -138,7 +138,7 @@ for i, data in enumerate(data_loader):
     plt.subplot(122)
     plt.imshow(final_sal, alpha=0.5, cmap='jet')
     plt.axis('off')
-    plt.savefig('./figs/' + str(i) + 'sal.png', , facecolor='black')
+    plt.savefig('./figs/' + str(i) + 'sal.png', facecolor='black')
 
     scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./del/')
     scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./ins/')
