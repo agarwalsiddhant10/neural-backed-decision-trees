@@ -9,11 +9,13 @@ import torchvision
 import torchvision.transforms as transforms
 import torch.utils.data
 from torch.utils.data.sampler import Sampler
+import torchvision.datasets as datasets
 
 import matplotlib.pyplot as plt
 import numpy as np
 from explainer import Explainer
 from RISE.evaluation import CausalMetric, auc, gkern
+# from RISE.utils import *
 import torch.nn as nn
 
 classes_cifar10 = ('plane', 'car', 'bird', 'cat',
@@ -22,6 +24,13 @@ classes_cifar10 = ('plane', 'car', 'bird', 'cat',
 def get_class_name(c):
     return classes_cifar10[c]
 
+def get_class_name(c):
+    # path.join(path.dirname(__file__), '..')
+    labels = np.loadtxt('./tiny_synset.txt', str, delimiter='\t')
+    return ' '.join(labels[c].split(',')[0].split()[1:])
+
+class Dummy():
+    pass
 
 # return dataset[r] instead of whole dataset.
 class RangeSampler(Sampler):
@@ -34,36 +43,43 @@ class RangeSampler(Sampler):
     def __len__(self):
         return len(self.r)
 
-transform = transforms.Compose([
-  transforms.Resize(32),
-  transforms.CenterCrop(32),
-  transforms.ToTensor(),
-  transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-])
+preprocess = transforms.Compose([
+                transforms.Resize((64, 64)),
+                transforms.ToTensor(),
+                # Normalization for ImageNet
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225]),
+            ])
 
 batch_size = 1
 range_sample = range(0,10)
 
-#Load training data
-trainset = torchvision.datasets.CIFAR10(root='./data/', train=True,
-                                        download=True, transform = transform)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                          shuffle=True, num_workers=1)
-#Loaad testing data
-testset = torchvision.datasets.CIFAR10(root='./data/', train=False,
-                                       download=True, transform = transform)
-testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                         shuffle=False, num_workers=1, pin_memory=True, sampler=RangeSampler(range_sample))
+args = Dummy()
 
-model = wrn28_10_cifar10()
+args.workers = 8
+args.datadir = './tiny-imagenet-200/val/'
+args.range = range(95, 105)
+args.input_size = (224, 224)
+args.gpu_batch = 100
+
+dataset = datasets.ImageFolder(args.datadir, preprocess)
+
+# This example only works with batch size 1. For larger batches see RISEBatch in explanations.py.
+data_loader = torch.utils.data.DataLoader(
+    dataset, batch_size=1, shuffle=False,
+    num_workers=args.workers, pin_memory=True, sampler=RangeSampler(args.range))
+
+#Load training data
+
+model = ResNet18(num_classes=200)
 model = HardNBDT(
   pretrained=True,
-  dataset='CIFAR10',
-  arch='wrn28_10_cifar10',
+  dataset='TinyImagenet200',
+  arch='ResNet18',
   model=model)
 model = model.cuda()
 
-explainer = Explainer(model, (32, 32), 500)
+explainer = Explainer(model, (64, 64), 500)
 explainer.generate_masks(1000, 8, 0.1, 'temp.npy')
 
 klen = 11
@@ -72,14 +88,14 @@ kern = gkern(klen, ksig)
 
 blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2)
 
-insertion = CausalMetric(model, 'ins', 32*8, substrate_fn=blur, n_classes=10, device=torch.device("cuda"))
-deletion = CausalMetric(model, 'del', 32*8, substrate_fn=torch.zeros_like, n_classes=10, device=torch.device("cuda"))
+insertion = CausalMetric(model, 'ins', 64*8, substrate_fn=blur, n_classes=200, device=torch.device("cuda"))
+deletion = CausalMetric(model, 'del', 64*8, substrate_fn=torch.zeros_like, n_classes=200, device=torch.device("cuda"))
 
 mean_ins = 0
 mean_del = 0
 
 softmax = nn.Softmax(dim=1)
-for i, data in enumerate(testloader):
+for i, data in enumerate(data_loader):
     if i >=50:
         break
     image, label = data
@@ -91,20 +107,21 @@ for i, data in enumerate(testloader):
 
     print('Generating saliency maps for the decisions made: ')
     plt.figure(figsize=(10, 5))
+    # print(len(path[0]))
     for j in range(len(path[0])):
-        plt.subplot(int('22'+ str(j+1)))
+        plt.subplot(int('42'+ str(j+1)))
         plt.title(names[0][path[0][j]] + ' {:.3f}'.format(tree[0][path[0][j]]), color='w')
         plt.imshow(sal[path[0][j]], alpha=0.5, cmap='jet')
         plt.axis('off')
-    plt.savefig('fig{}.jpg'.format(i), facecolor = 'black')
+    plt.savefig('fig{}.jpg'.format(i), facecolor='black')
     plt.show()
 
     print('Generating final combined saliency map')
     final_sal = explainer.gen_final_sal(sal, path)
     img = image.clone()
     img = img.cpu().numpy()[0]
-    mean = [0.4914, 0.4822, 0.4465] 
-    std = [0.2023, 0.1994, 0.2010]
+    mean=[0.485, 0.456, 0.406]
+    std=[0.229, 0.224, 0.225]
 
     for channel in range(3):
         img[channel] = img[channel]*std[channel] + mean[channel]
@@ -116,15 +133,15 @@ for i, data in enumerate(testloader):
     plt.figure(figsize=(10, 5))
     plt.subplot(121)
     plt.imshow(img.astype(np.uint8))
-    plt.title(classes_cifar10[cl] + ' {:.3f}'.format(probs[0, cl]), color='w')
+    plt.title(get_class_name(cl) + ' {:.3f}'.format(probs[0, cl]), color='w')
     plt.axis('off')
     plt.subplot(122)
     plt.imshow(final_sal, alpha=0.5, cmap='jet')
     plt.axis('off')
-    plt.savefig('./figs/' + str(i) + 'sal.png', facecolor = 'black')
+    plt.savefig('./figs/' + str(i) + 'sal.png', , facecolor='black')
 
-    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./figs/del/')
-    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./figs/ins/')
+    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./del/')
+    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./ins/')
 
     mean_ins += auc(scores1)
     mean_del += auc(scores2)
@@ -136,7 +153,7 @@ print('Insertion score: ', mean_ins/len(testloader))
 print('Deletion score: ', mean_del/len(testloader))
 
     # print(final_sal)
-    break
+    # break
 
 
 
