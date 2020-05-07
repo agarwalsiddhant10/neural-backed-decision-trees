@@ -92,7 +92,7 @@ for i, data in enumerate(testloader):
     if i >=50:
         break
     image, label = data
-    logits, decisions, tree, names, path = model.forward_with_decisions(image.cuda())
+    logits, decisions, tree, names, path = hardModel.forward_with_decisions(image.cuda())
     probs = softmax(logits)
     cl = torch.argmax(probs, 1).cpu().numpy()[0]
 
