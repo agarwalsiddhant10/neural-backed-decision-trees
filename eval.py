@@ -96,6 +96,13 @@ for i, data in enumerate(testloader):
     probs = softmax(logits)
     cl = torch.argmax(probs, 1).cpu().numpy()[0]
 
+    cl_soft = torch.argmax(sotModel(image.cuda()), 1).cpu().numpy()[0]
+
+    print(cl)
+    print(cl_soft)
+
+    assert cl == cl_soft
+
     sal = explainer(image.cuda())
 
     print('Generating saliency maps for the decisions made: ')
