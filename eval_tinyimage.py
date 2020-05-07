@@ -128,7 +128,7 @@ for i, data in enumerate(data_loader):
             plt.title('decision: {}  '.format(j+1) + names[0][path[0][j]] + ' with prob {:.3f}'.format(tree[0][path[0][j]]), color='w')
         plt.imshow(sal[path[0][j]], alpha=0.5, cmap='jet')
         plt.axis('off')
-    plt.savefig('TinyImageNet200_all_fig{}.jpg'.format(i), facecolor='black')
+    plt.savefig('./output_TinyIMGNET/TinyImageNet200_all_fig{}.jpg'.format(i), facecolor='black')
     plt.show()
 
     print('Generating final combined saliency map')
@@ -153,16 +153,16 @@ for i, data in enumerate(data_loader):
     plt.subplot(122)
     plt.imshow(final_sal, alpha=0.5, cmap='jet')
     plt.axis('off')
-    plt.savefig('./figs/' + str(i) + 'TinyImageNet200_mean_sal.png', facecolor='black')
+    plt.savefig('./output_TinyIMGNET/figs/' + str(i) + 'TinyImageNet200_mean_sal.png', facecolor='black')
 
 
-    if not os.path.exists('insTIN{}'.format(i)):
-        os.makedirs('insTIN{}'.format(i))
-    if not os.path.exists('delTINTIN{}'.format(i)):
-        os.makedirs('delTIN{}'.format(i))
+    if not os.path.exists('output_TinyIMGNET/insTIN{}'.format(i)):
+        os.makedirs('output_TinyIMGNET/insTIN{}'.format(i))
+    if not os.path.exists('output_TinyIMGNET/delTINTIN{}'.format(i)):
+        os.makedirs('output_TinyIMGNET/delTIN{}'.format(i))
 
-    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./delTIN{}/'.format(i))
-    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./insTIN{}/'.format(i))
+    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./output_TinyIMGNET/delTIN{}/'.format(i))
+    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./output_TinyIMGNET/insTIN{}/'.format(i))
 
     
     
@@ -173,8 +173,10 @@ for i, data in enumerate(data_loader):
     print('Deletion score so far: ', mean_del/(i +1))
 
 
-print('Insertion score: ', mean_ins/len(testloader))
-print('Deletion score: ', mean_del/len(testloader))
+fi = open('./output_TinyIMGNET/Results.txt', 'w+')
+print('Insertion score: ', mean_ins/len(testloader), file=fi)
+print('Deletion score: ', mean_del/len(testloader), file=fi)
+fi.close()
 
     # print(final_sal)
     # break

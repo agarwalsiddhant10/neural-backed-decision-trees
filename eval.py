@@ -49,7 +49,7 @@ range_sample = range(100,200,10)
 trainset = torchvision.datasets.CIFAR10(root='./data/', train=True,
                                         download=True, transform = transform)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                          shuffle=True, num_workers=1)
+                                          shuffle=False, num_workers=1)
 #Loaad testing data
 testset = torchvision.datasets.CIFAR10(root='./data/', train=False,
                                        download=True, transform = transform)
@@ -105,7 +105,7 @@ for i, data in enumerate(testloader):
         plt.title(names[0][path[0][j]] + ' {:.3f}'.format(tree[0][path[0][j]]), color='w')
         plt.imshow(sal[path[0][j]], alpha=0.5, cmap='jet')
         plt.axis('off')
-    plt.savefig('fig-all-cifar10-{}.jpg'.format(i), facecolor = 'black')
+    plt.savefig('./output_CIFAR10/fig-all-cifar10-{}.jpg'.format(i), facecolor = 'black')
     plt.show()
 
     print('Generating final combined saliency map')
@@ -130,24 +130,25 @@ for i, data in enumerate(testloader):
     plt.subplot(122)
     plt.imshow(final_sal, alpha=0.5, cmap='jet')
     plt.axis('off')
-    plt.savefig('./figs/' + str(i) + 'sal-weighted-cifar-10.png', facecolor = 'black')
+    plt.savefig('.output_CIFAR10/figs/' + str(i) + 'sal-weighted-cifar-10.png', facecolor = 'black')
 
-    if not os.path.exists('insCIF{}'.format(i)):
-        os.makedirs('insCIF{}'.format(i))
-    if not os.path.exists('delCIF{}'.format(i)):
-        os.makedirs('delCIF{}'.format(i))
+    if not os.path.exists('output_CIFAR10/insCIF{}'.format(i)):
+        os.makedirs('output_CIFAR10/insCIF{}'.format(i))
+    if not os.path.exists('output_CIFAR10/delCIF{}'.format(i)):
+        os.makedirs('output_CIFAR10/delCIF{}'.format(i))
 
-    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./delCIF{}/'.format(i))
-    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./insCIF{}/'.format(i))
+    scores2 = deletion.single_run(image, final_sal, verbose=1, save_to='./output_CIFAR10/delCIF{}/'.format(i))
+    scores1 = insertion.single_run(image, final_sal, verbose=1, save_to='./output_CIFAR10/insCIF{}/'.format(i))
 
     mean_ins += auc(scores1)
     mean_del += auc(scores2)
     print('Insertion score so far: ', mean_ins/(i + 1))
     print('Deletion score so far: ', mean_del/(i +1))
 
-
-print('Insertion score: ', mean_ins/len(testloader))
-print('Deletion score: ', mean_del/len(testloader))
+fi = open('./output_CIFAR10/Results.txt', 'w+')
+print('Insertion score: ', mean_ins/len(testloader), file=fi)
+print('Deletion score: ', mean_del/len(testloader), file=fi)
+fi.close()
 
     # print(final_sal)
     # break
